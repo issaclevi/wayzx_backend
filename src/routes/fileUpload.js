@@ -7,45 +7,41 @@ router.post('/upload', upload.single('image'), async (req, res) => {
   try {
     const file = req.file;
 
-    if (!file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    if (!file || !file.path) {
+      return res.status(400).json({ error: 'Image not uploaded' });
     }
-
-    const storedName = Date.now() + '-' + file.originalname.replace(/\s+/g, '');
-
-    const virtualPath = `virtual://memory/${storedName}`;
 
     const savedFile = new File({
       originalName: file.originalname,
-      storedName: storedName,
+      storedName: file.filename,
       mimeType: file.mimetype,
       size: file.size,
-      path: virtualPath,
+      path: file.path,
     });
 
     await savedFile.save();
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const fullPath = `${baseUrl}/files/${storedName}`;
-
     res.status(200).json({
       status: 'success',
       statusCode: 200,
-      message: 'File uploaded and metadata saved',
+      message: 'File uploaded to Cloudinary and metadata saved',
       file: {
-        originalName: savedFile.originalName,
-        storedName: savedFile.storedName,
-        mimeType: savedFile.mimeType,
-        size: savedFile.size,
-        filePath: fullPath,
+        originalName: file.originalname,
+        storedName: file.filename,
+        mimeType: file.mimetype,
+        size: file.size,
+        filePath: file.path,
         _id: savedFile._id,
         uploadedAt: savedFile.uploadedAt,
-        __v: savedFile.__v,
       },
     });
   } catch (err) {
     console.error('Upload Error:', err);
-    res.status(500).json({ error: 'Upload failed', detail: err.message });
+    res.status(500).json({
+      status: 'error',
+      message: 'Upload failed',
+      error: err.message || err.toString(),
+    });
   }
 });
 
