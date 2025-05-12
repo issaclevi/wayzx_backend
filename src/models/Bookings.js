@@ -8,11 +8,13 @@ const bookingSchema = new mongoose.Schema(
       unique: true,
     },
     roomId: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Room',
       required: true,
     },
     userId: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: true,
     },
     location: {
@@ -32,17 +34,23 @@ const bookingSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
-    bookingDate: {
+    start_date: {
       type: Date,
       required: true,
     },
-    startTime: {
-      type: String,
+    end_date: {
+      type: Date,
       required: true,
     },
-    endTime: {
-      type: String,
-      required: true,
+    timeRange: {
+      start: {
+        type: String, // e.g., "10:00 AM"
+        required: true,
+      },
+      end: {
+        type: String, // e.g., "01:00 PM"
+        required: true,
+      },
     },
     name: {
       type: String,

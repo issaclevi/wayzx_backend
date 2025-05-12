@@ -1,4 +1,5 @@
 const Room = require('../models/Rooms');
+const moment = require('moment');
 const Booking = require('../models/Bookings');
 const {
   sendSuccess,
@@ -77,16 +78,9 @@ exports.deleteRoom = async (req, res) => {
 const timeToMinutes = (timeStr) => {
   const [timePart, period] = timeStr.split(' ');
   const [hours, minutes] = timePart.split(':').map(Number);
-  
   let totalMinutes = hours * 60 + minutes;
-  
-  if (period === 'PM' && hours !== 12) {
-    totalMinutes += 12 * 60;
-  }
-  if (period === 'AM' && hours === 12) {
-    totalMinutes -= 12 * 60;
-  }
-  
+  if (period === 'PM' && hours !== 12) totalMinutes += 12 * 60;
+  if (period === 'AM' && hours === 12) totalMinutes -= 12 * 60;
   return totalMinutes;
 };
 
@@ -101,58 +95,70 @@ const isTimeOverlapping = (slotStart, slotEnd, bookingStart, bookingEnd) => {
 exports.getRoomAvailability = async (req, res) => {
   try {
     const { id } = req.params;
-    let { date } = req.query;
-
-    if (!date) {
-      date = new Date().toISOString().split('T')[0];
-    }
+    const { startDate, endDate } = req.query;
 
     const room = await Room.findById(id);
     if (!room) return sendNotFound(res, 'Room not found');
 
-    const bookings = await Booking.find({
-      roomId: id,
-      bookingDate: new Date(date),
-      status: { $in: ['Booked', 'Confirmed'] }
-    });
+    const start = startDate ? moment(startDate) : moment();
+    const end = endDate ? moment(endDate) : moment(start);
 
-    const slots = [];
+    if (!start.isValid() || !end.isValid()) {
+      return sendErrorMessage(res, 'Invalid date format. Use YYYY-MM-DD');
+    }
+
+    const days = [];
     const startHour = 8;
     const endHour = 20;
     const slotDuration = 30;
 
-    for (let hour = startHour; hour < endHour; hour++) {
-      for (let minute = 0; minute < 60; minute += slotDuration) {
-        const slotStartMin = hour * 60 + minute;
-        const slotEndMin = slotStartMin + slotDuration;
-        
-        let isBooked = false;
-        
-        for (const booking of bookings) {
-          const bookingStartMin = timeToMinutes(booking.startTime);
-          const bookingEndMin = timeToMinutes(booking.endTime);
-          
-          if (isTimeOverlapping(slotStartMin, slotEndMin, bookingStartMin, bookingEndMin)) {
-            isBooked = true;
-            break;
-          }
-        }
+    for (let m = start.clone(); m.isSameOrBefore(end); m.add(1, 'days')) {
+      const dateStr = m.format('YYYY-MM-DD');
 
-        slots.push({
-          start: formatTimeDisplay(slotStartMin),
-          end: formatTimeDisplay(slotEndMin),
-          status: isBooked ? 'Booked' : 'Available',
-          isBooked
-        });
+      const bookings = await Booking.find({
+        roomId: id,
+        start_date: { $lte: new Date(dateStr + 'T23:59:59Z') },
+        end_date: { $gte: new Date(dateStr + 'T00:00:00Z') },
+        status: { $in: ['Booked', 'Confirmed'] }
+      });
+
+      const slots = [];
+
+      for (let hour = startHour; hour < endHour; hour++) {
+        for (let minute = 0; minute < 60; minute += slotDuration) {
+          const slotStartMin = hour * 60 + minute;
+          const slotEndMin = slotStartMin + slotDuration;
+
+          let isBooked = false;
+
+          for (const booking of bookings) {
+            const bookingStartMin = timeToMinutes(booking.timeRange?.start);
+            const bookingEndMin = timeToMinutes(booking.timeRange?.end);
+
+            if (isTimeOverlapping(slotStartMin, slotEndMin, bookingStartMin, bookingEndMin)) {
+              isBooked = true;
+              break;
+            }
+          }
+
+          slots.push({
+            start: formatTimeDisplay(slotStartMin),
+            end: formatTimeDisplay(slotEndMin),
+            status: isBooked ? 'Booked' : 'Available',
+            isBooked
+          });
+        }
       }
+
+      days.push({ date: dateStr, slots });
     }
 
     return sendSuccess(res, 'Room availability fetched', {
       room: room.title || room.name,
       spaceType: room.spaceType,
       location: room.location,
-      date,
-      slots,
+      range: { startDate: start.format('YYYY-MM-DD'), endDate: end.format('YYYY-MM-DD') },
+      availability: days
     });
   } catch (error) {
     console.error(error);
