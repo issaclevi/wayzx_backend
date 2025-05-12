@@ -6,6 +6,7 @@ const roomSchema = new mongoose.Schema({
     description: String,
     location: { type: String, required: true },
     pricePerHour: { type: Number, required: true },
+    capacity: { type: Number, required: true },
     currency: {
         code: { type: String, default: 'IND' },
         symbol: { type: String, default: '₹' },
@@ -15,7 +16,14 @@ const roomSchema = new mongoose.Schema({
     amenities: [
         {
             name: String,
+            imageUrl: String
+        },
+    ],
+    extraamenities: [
+        {
+            name: String,
             imageUrl: String,
+            price: Number
         },
     ],
 }, { timestamps: true });

@@ -29,15 +29,16 @@ export const bookingValidationRules = [
       return true;
     }),
 
-  body('timeRange.start')
-    .notEmpty().withMessage('timeRange.start is required')
-    .matches(/^(0?[1-9]|1[0-2]):[0-5][0-9]\s?(AM|PM)$/i)
-    .withMessage('timeRange.start must be in hh:mm AM/PM format'),
+  check('timeRanges')
+    .isArray({ min: 1 }).withMessage('timeRanges must be an array of at least one range'),
 
-  body('timeRange.end')
-    .notEmpty().withMessage('timeRange.end is required')
-    .matches(/^(0?[1-9]|1[0-2]):[0-5][0-9]\s?(AM|PM)$/i)
-    .withMessage('timeRange.end must be in hh:mm AM/PM format'),
+  check('timeRanges.*.start')
+    .matches(/^(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/i)
+    .withMessage('Each timeRange.start must be in hh:mm AM/PM format'),
+
+  check('timeRanges.*.end')
+    .matches(/^(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/i)
+    .withMessage('Each timeRange.end must be in hh:mm AM/PM format'),
 
   check('name', 'Name is required').notEmpty(),
   check('email', 'Valid email is required').isEmail(),

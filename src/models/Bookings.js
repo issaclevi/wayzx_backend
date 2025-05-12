@@ -42,16 +42,18 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
-    timeRange: {
-      start: {
-        type: String, // e.g., "10:00 AM"
-        required: true,
-      },
-      end: {
-        type: String, // e.g., "01:00 PM"
-        required: true,
-      },
-    },
+    timeRanges: [
+      {
+        start: {
+          type: String,
+          required: true,
+        },
+        end: {
+          type: String,
+          required: true,
+        }
+      }
+    ],
     name: {
       type: String,
       required: true,

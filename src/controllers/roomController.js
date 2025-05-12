@@ -76,11 +76,21 @@ exports.deleteRoom = async (req, res) => {
 
 // Get room availability for a date
 const timeToMinutes = (timeStr) => {
-  const [timePart, period] = timeStr.split(' ');
-  const [hours, minutes] = timePart.split(':').map(Number);
+  if (!timeStr || typeof timeStr !== 'string') return -1;
+
+  const parts = timeStr.trim().split(' ');
+  if (parts.length !== 2) return -1;
+
+  const [timePart, period] = parts;
+  const [hoursStr, minutesStr] = timePart.split(':');
+  const hours = parseInt(hoursStr, 10);
+  const minutes = parseInt(minutesStr, 10);
+
+  if (isNaN(hours) || isNaN(minutes)) return -1;
+
   let totalMinutes = hours * 60 + minutes;
-  if (period === 'PM' && hours !== 12) totalMinutes += 12 * 60;
-  if (period === 'AM' && hours === 12) totalMinutes -= 12 * 60;
+  if (period.toUpperCase() === 'PM' && hours !== 12) totalMinutes += 12 * 60;
+  if (period.toUpperCase() === 'AM' && hours === 12) totalMinutes -= 12 * 60;
   return totalMinutes;
 };
 
@@ -91,6 +101,14 @@ const isTimeOverlapping = (slotStart, slotEnd, bookingStart, bookingEnd) => {
     (slotStart <= bookingStart && slotEnd >= bookingEnd)
   );
 };
+
+function formatTimeDisplay(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+}
 
 exports.getRoomAvailability = async (req, res) => {
   try {
@@ -120,7 +138,7 @@ exports.getRoomAvailability = async (req, res) => {
         start_date: { $lte: new Date(dateStr + 'T23:59:59Z') },
         end_date: { $gte: new Date(dateStr + 'T00:00:00Z') },
         status: { $in: ['Booked', 'Confirmed'] }
-      });
+      }).lean();
 
       const slots = [];
 
@@ -132,13 +150,26 @@ exports.getRoomAvailability = async (req, res) => {
           let isBooked = false;
 
           for (const booking of bookings) {
-            const bookingStartMin = timeToMinutes(booking.timeRange?.start);
-            const bookingEndMin = timeToMinutes(booking.timeRange?.end);
+            for (const range of booking.timeRanges || []) {
+              if (!range.start || !range.end) {
+                console.warn('Invalid time range:', range);
+                continue;
+              }
 
-            if (isTimeOverlapping(slotStartMin, slotEndMin, bookingStartMin, bookingEndMin)) {
-              isBooked = true;
-              break;
+              const bookingStartMin = timeToMinutes(range.start);
+              const bookingEndMin = timeToMinutes(range.end);
+
+              if (bookingStartMin === -1 || bookingEndMin === -1) {
+                console.warn('Invalid time string in range:', range);
+                continue;
+              }
+
+              if (isTimeOverlapping(slotStartMin, slotEndMin, bookingStartMin, bookingEndMin)) {
+                isBooked = true;
+                break;
+              }
             }
+            if (isBooked) break;
           }
 
           slots.push({

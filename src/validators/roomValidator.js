@@ -6,6 +6,7 @@ export const roomValidationRules = [
   check('description').optional().isString().withMessage('Description must be a string'),
   check('location', 'Location is required').notEmpty(),
   check('pricePerHour', 'Price per hour must be a number').isFloat({ min: 0 }),
+  check('capacity', 'Capacity must be a number').isFloat({ min: 0 }),
   check('currency.code')
     .optional()
     .isString()

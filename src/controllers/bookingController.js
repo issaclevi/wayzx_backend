@@ -15,17 +15,18 @@ const generateBookingId = () => {
 };
 
 const timeToMinutes = (timeStr) => {
-    const [timePart, period] = timeStr.split(' ');
+    if (!timeStr || typeof timeStr !== 'string') return -1;
+    const [timePart, period] = timeStr.trim().split(' ');
+    if (!timePart || !period) return -1;
     const [hours, minutes] = timePart.split(':').map(Number);
-    let totalMinutes = hours * 60 + minutes;
+    if (isNaN(hours) || isNaN(minutes)) return -1;
 
+    let totalMinutes = hours * 60 + minutes;
     if (period.toUpperCase() === 'PM' && hours !== 12) totalMinutes += 12 * 60;
     if (period.toUpperCase() === 'AM' && hours === 12) totalMinutes -= 12 * 60;
-
     return totalMinutes;
 };
 
-// Helper to check time overlap
 const isTimeOverlapping = (slotStart, slotEnd, bookingStart, bookingEnd) => {
     return (
         (slotStart >= bookingStart && slotStart < bookingEnd) ||
@@ -36,11 +37,11 @@ const isTimeOverlapping = (slotStart, slotEnd, bookingStart, bookingEnd) => {
 
 exports.createBooking = async (req, res) => {
     try {
-        const { start_date, end_date, timeRange, ...rest } = req.body;
+        const { start_date, end_date, timeRanges, ...rest } = req.body;
 
-        if (!start_date || !end_date || !timeRange?.start || !timeRange?.end) {
+        if (!start_date || !end_date || !Array.isArray(timeRanges) || timeRanges.length === 0) {
             return sendErrorMessage(res, {
-                message: 'start_date, end_date, and timeRange (start, end) are required.'
+                message: 'start_date, end_date, and at least one time range in timeRanges[] are required.'
             }, req);
         }
 
@@ -59,10 +60,6 @@ exports.createBooking = async (req, res) => {
             }, req);
         }
 
-        const startMin = timeToMinutes(timeRange.start);
-        const endMin = timeToMinutes(timeRange.end);
-
-        // Loop through each day and check for conflicts
         for (let day = moment(start); day.isSameOrBefore(end); day.add(1, 'day')) {
             const bookings = await Booking.find({
                 roomId: rest.roomId,
@@ -71,26 +68,35 @@ exports.createBooking = async (req, res) => {
                 status: { $in: ['Booked', 'Confirmed'] }
             }).lean();
 
-            for (const booking of bookings) {
-                const bStartMin = timeToMinutes(booking.timeRange?.start);
-                const bEndMin = timeToMinutes(booking.timeRange?.end);
+            for (const requested of timeRanges) {
+                if (!requested.start || !requested.end) {
+                    return sendErrorMessage(res, "Each timeRange must include 'start' and 'end'.", req);
+                }
 
-                if (isTimeOverlapping(startMin, endMin, bStartMin, bEndMin)) {
-                    return sendErrorMessage(
-                        res,
-                        `The room is already booked on ${day.format('YYYY-MM-DD')} from ${booking.timeRange.start} to ${booking.timeRange.end}`,
-                        req
-                    );
+                const reqStart = timeToMinutes(requested.start);
+                const reqEnd = timeToMinutes(requested.end);
+
+                for (const booking of bookings) {
+                    for (const existing of booking.timeRanges || []) {
+                        const exStart = timeToMinutes(existing.start);
+                        const exEnd = timeToMinutes(existing.end);
+
+                        if (isTimeOverlapping(reqStart, reqEnd, exStart, exEnd)) {
+                            return sendErrorMessage(res,
+                                `Conflict on ${day.format('YYYY-MM-DD')} between ${requested.start} - ${requested.end}`,
+                                req
+                            );
+                        }
+                    }
                 }
             }
         }
 
-        // No conflicts — proceed to create the booking
         const booking = await Booking.create({
             ...rest,
             start_date: start.toDate(),
             end_date: end.toDate(),
-            timeRange,
+            timeRanges,
             bookingId: generateBookingId()
         });
 
