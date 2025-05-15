@@ -7,6 +7,11 @@ const roomSchema = new mongoose.Schema({
     location: { type: String, required: true },
     pricePerHour: { type: Number, required: true },
     capacity: { type: Number, required: true },
+    spaceTypeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SpaceType',
+        required: true,
+    },
     currency: {
         code: { type: String, default: 'IND' },
         symbol: { type: String, default: '₹' },

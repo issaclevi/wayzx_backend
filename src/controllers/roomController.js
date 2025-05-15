@@ -1,6 +1,7 @@
 const Room = require('../models/Rooms');
 const moment = require('moment');
 const Booking = require('../models/Bookings');
+const mongoose = require('mongoose');
 const {
   sendSuccess,
   sendCreated,
@@ -24,11 +25,32 @@ exports.createRoom = async (req, res) => {
 // Get all rooms
 exports.getAllRooms = async (req, res) => {
   try {
-    const rooms = await Room.find();
+    const rooms = await Room.find().populate('spaceTypeId', 'name');
     return sendSuccess(res, 'Rooms fetched successfully', rooms);
   } catch (error) {
     console.error(error);
     return sendError(res, error);
+  }
+};
+
+exports.getRoomsBySpaceTypeId = async (req, res) => {
+  try {
+    const { spaceTypeId } = req.params;
+
+    if (!spaceTypeId) {
+      return sendError(res, 'Missing spaceTypeId');
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(spaceTypeId)) {
+      return sendError(res, 'Invalid spaceTypeId');
+    }
+
+    const rooms = await Room.find({ spaceTypeId })
+      .populate('spaceTypeId', 'name');
+
+    return sendSuccess(res, 'Rooms fetched successfully', rooms);
+  } catch (error) {
+    return sendError(res, error.message || 'Internal Server Error');
   }
 };
 
