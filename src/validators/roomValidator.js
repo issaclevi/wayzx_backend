@@ -3,7 +3,7 @@ import { sendErrorMessage } from '../utils/response.js';
 
 export const roomValidationRules = [
   check('name', 'Name is required').notEmpty(),
-  check('description').optional().isString().withMessage('Description must be a string'),
+  check('description').optional().isString().withMessage('Description is required'),
   check('location', 'Location is required').notEmpty(),
   check('pricePerHour', 'Price per hour must be a number').isFloat({ min: 0 }),
   check('capacity', 'Capacity must be a number').isFloat({ min: 0 }),

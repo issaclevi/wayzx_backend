@@ -39,7 +39,7 @@ exports.createBooking = async (req, res) => {
     try {
         const { start_date, end_date, timeRanges, ...rest } = req.body;
 
-        if (!start_date || !end_date || !Array.isArray(timeRanges) || timeRanges.length === 0) {
+        if (!start_date || !Array.isArray(timeRanges) || timeRanges.length === 0) {
             return sendErrorMessage(res, {
                 message: 'start_date, end_date, and at least one time range in timeRanges[] are required.'
             }, req);
@@ -54,9 +54,9 @@ exports.createBooking = async (req, res) => {
             }, req);
         }
 
-        if (end.isSameOrBefore(start)) {
+        if (end.isBefore(start)) {
             return sendErrorMessage(res, {
-                message: 'end_date must be after start_date.'
+                message: 'end_date cannot be before start_date.'
             }, req);
         }
 

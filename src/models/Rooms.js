@@ -16,14 +16,9 @@ const roomSchema = new mongoose.Schema({
     amenities: [
         {
             name: String,
-            imageUrl: String
-        },
-    ],
-    extraamenities: [
-        {
-            name: String,
             imageUrl: String,
-            price: Number
+            price: Number,
+            isFree: Boolean
         },
     ],
 }, { timestamps: true });
