@@ -14,6 +14,7 @@ exports.createSpaceType = async (req, res) => {
         await spaceType.save();
         sendSuccess(res, 'SpaceType added successfully', spaceType);
     } catch (error) {
+        console.error('Create SpaceType Error:', error);
         sendError(res, 'Internal server error', error);
     }
 };
@@ -35,7 +36,7 @@ exports.getSpaceTypeById = async (req, res) => {
         if (!spaceType) {
             return res.status(404).json({ success: false, message: 'Not found' });
         }
-        res.json({ success: true, data: spaceType });
+        sendSuccess(res, 'Data fetched successfully', spaceType);
     } catch (error) {
         sendError(res, 'Internal server error', error);
     }
@@ -47,7 +48,7 @@ exports.updateSpaceType = async (req, res) => {
         const updated = await SpaceType.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
         });
-        res.json({ success: true, data: updated });
+        sendSuccess(res, 'Space Type Updated Successfully', updated);
     } catch (error) {
         sendError(res, 'Internal server error', error);
     }
@@ -57,7 +58,7 @@ exports.updateSpaceType = async (req, res) => {
 exports.deleteSpaceType = async (req, res) => {
     try {
         await SpaceType.findByIdAndDelete(req.params.id);
-        res.json({ success: true, message: 'Deleted successfully' });
+        sendSuccess(res, 'Deleted successfully');
     } catch (error) {
         sendError(res, 'Internal server error', error);
     }

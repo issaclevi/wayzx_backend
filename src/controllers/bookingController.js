@@ -1,5 +1,6 @@
 const Booking = require('../models/Bookings');
 const moment = require('moment-timezone');
+const SpaceType = require('../models/SpaceType');
 const {
     sendSuccess,
     sendCreated,
@@ -14,103 +15,104 @@ const generateBookingId = () => {
     return `M${randomNumber}`;
 };
 
-const timeToMinutes = (timeStr) => {
-    if (!timeStr || typeof timeStr !== 'string') return -1;
-    const [timePart, period] = timeStr.trim().split(' ');
-    if (!timePart || !period) return -1;
-    const [hours, minutes] = timePart.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return -1;
-
-    let totalMinutes = hours * 60 + minutes;
-    if (period.toUpperCase() === 'PM' && hours !== 12) totalMinutes += 12 * 60;
-    if (period.toUpperCase() === 'AM' && hours === 12) totalMinutes -= 12 * 60;
-    return totalMinutes;
-};
-
-const isTimeOverlapping = (slotStart, slotEnd, bookingStart, bookingEnd) => {
-    return (
-        (slotStart >= bookingStart && slotStart < bookingEnd) ||
-        (slotEnd > bookingStart && slotEnd <= bookingEnd) ||
-        (slotStart <= bookingStart && slotEnd >= bookingEnd)
-    );
-};
-
 exports.createBooking = async (req, res) => {
     try {
-        const { start_date, end_date, timeRanges, ...rest } = req.body;
+        const roomId = req.body.roomId;
+        const start_date = req.body.start_date;
+        const spaceTypeId = req.body.spaceTypeId;
+        const timeRanges = req.body.timeRanges || [];
+        const extraAmenity = Array.isArray(req.body.extraAmenity) ? req.body.extraAmenity : [];
 
-        if (!start_date || !Array.isArray(timeRanges) || timeRanges.length === 0) {
-            return sendErrorMessage(res, {
-                message: 'start_date, end_date, and at least one time range in timeRanges[] are required.'
-            }, req);
+        console.log('ame', extraAmenity);
+
+        if (!roomId || !start_date || !spaceTypeId || !Array.isArray(timeRanges) || timeRanges.length === 0) {
+            return sendErrorMessage(res, 'Missing required fields (roomId, start_date, spaceTypeId, timeRanges)', req);
+        }
+
+        if (!Array.isArray(extraAmenity) || !extraAmenity.every(item => typeof item === 'string')) {
+            return sendErrorMessage(res, 'Invalid extraAmenity - must be an array of strings', req);
+        }
+
+        const spaceTypeDoc = await SpaceType.findById(spaceTypeId).lean();
+        if (!spaceTypeDoc || !spaceTypeDoc.allowedSlots || spaceTypeDoc.allowedSlots.length === 0) {
+            return sendErrorMessage(res, 'Invalid or unconfigured spaceTypeId', req);
+        }
+
+        const allowedSlots = spaceTypeDoc.allowedSlots;
+
+        for (const slot of timeRanges) {
+            if (!allowedSlots.includes(slot)) {
+                return sendErrorMessage(res, `Invalid slot '${slot}' for selected spaceTypeId`, req);
+            }
         }
 
         const start = moment(start_date, 'YYYY-MM-DD');
-        const end = moment(end_date, 'YYYY-MM-DD');
+        const end = moment(req.body.end_date || start_date, 'YYYY-MM-DD');
 
         if (!start.isValid() || !end.isValid()) {
-            return sendErrorMessage(res, {
-                message: 'Invalid start_date or end_date format. Use YYYY-MM-DD.'
-            }, req);
+            return sendErrorMessage(res, 'Invalid start_date or end_date format (YYYY-MM-DD expected)', req);
         }
 
         if (end.isBefore(start)) {
-            return sendErrorMessage(res, {
-                message: 'end_date cannot be before start_date.'
-            }, req);
+            return sendErrorMessage(res, 'end_date cannot be before start_date', req);
         }
 
         for (let day = moment(start); day.isSameOrBefore(end); day.add(1, 'day')) {
-            const bookings = await Booking.find({
-                roomId: rest.roomId,
-                start_date: { $lte: day.toDate() },
-                end_date: { $gte: day.toDate() },
+            const date = day.clone().toDate();
+
+            const existingBookings = await Booking.find({
+                roomId,
+                start_date: { $lte: date },
+                end_date: { $gte: date },
                 status: { $in: ['Booked', 'Confirmed'] }
             }).lean();
 
-            for (const requested of timeRanges) {
-                if (!requested.start || !requested.end) {
-                    return sendErrorMessage(res, "Each timeRange must include 'start' and 'end'.", req);
-                }
-
-                const reqStart = timeToMinutes(requested.start);
-                const reqEnd = timeToMinutes(requested.end);
-
-                for (const booking of bookings) {
-                    for (const existing of booking.timeRanges || []) {
-                        const exStart = timeToMinutes(existing.start);
-                        const exEnd = timeToMinutes(existing.end);
-
-                        if (isTimeOverlapping(reqStart, reqEnd, exStart, exEnd)) {
-                            return sendErrorMessage(res,
-                                `Conflict on ${day.format('YYYY-MM-DD')} between ${requested.start} - ${requested.end}`,
-                                req
-                            );
-                        }
+            for (const slot of timeRanges) {
+                for (const booking of existingBookings) {
+                    if ((booking.timeRanges || []).includes(slot)) {
+                        return sendErrorMessage(res, `Slot '${slot}' already booked on ${day.format('YYYY-MM-DD')}`, req);
                     }
                 }
             }
         }
 
-        const booking = await Booking.create({
-            ...rest,
+        const newBooking = await Booking.create({
+            userId: req.body.userId,
+            roomId,
+            location: req.body.location,
+            title: req.body.title,
+            guests: req.body.guests,
             start_date: start.toDate(),
             end_date: end.toDate(),
-            timeRanges,
+            timeRanges, extraAmenity,
+            spaceType: spaceTypeId,
+            name: req.body.name,
+            email: req.body.email,
+            pricePerHour: req.body.pricePerHour,
+            serviceFeeAndTax: req.body.serviceFeeAndTax,
+            totalAmount: req.body.totalAmount,
+            status: req.body.status,
             bookingId: generateBookingId()
         });
 
-        const timezone = req.headers['x-timezone'] || 'Asia/Kolkata';
+        await SpaceType.findByIdAndUpdate(spaceTypeId, {
+            $set: { lastBookedAt: new Date() },
+            $inc: { bookingsCount: 1 }
+        });
 
+        const timezone = req.headers['x-timezone'] || 'Asia/Kolkata';
         const formattedBooking = {
-            ...booking.toObject(),
-            start_date: moment(booking.start_date).tz(timezone).format('ddd MMM DD YYYY'),
-            end_date: moment(booking.end_date).tz(timezone).format('ddd MMM DD YYYY')
+            ...newBooking.toObject(),
+            start_date: moment(newBooking.start_date).tz(timezone).format('ddd MMM DD YYYY'),
+            end_date: moment(newBooking.end_date).tz(timezone).format('ddd MMM DD YYYY')
         };
+
+        console.log('final', formattedBooking);
+
 
         return sendSuccess(res, 'Booking created successfully', formattedBooking);
     } catch (error) {
-        console.error(error);
+        console.error('Booking creation failed:', error);
         return sendError(res, error, req);
     }
 };
@@ -118,7 +120,10 @@ exports.createBooking = async (req, res) => {
 // Get all bookings
 exports.getAllBookings = async (req, res) => {
     try {
-        const bookings = await Booking.find().sort({ createdAt: -1 });
+        const bookings = await Booking.find()
+            .populate('spaceType', 'name')
+            .populate('roomId')
+            .sort({ createdAt: -1 });
         sendSuccess(res, 'All bookings retrieved successfully', bookings);
     } catch (error) {
         await sendError(res, error, req);

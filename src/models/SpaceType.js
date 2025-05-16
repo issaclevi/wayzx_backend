@@ -16,6 +16,9 @@ const SpaceTypeSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    allowedSlots: [{ type: String }],
+    lastBookedAt: { type: Date },
+    bookingsCount: { type: Number, default: 0 }
   },
   {
     timestamps: true,

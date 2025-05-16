@@ -17,15 +17,20 @@ const bookingSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    spaceType: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SpaceType',
+      required: true,
+    },
+    extraAmenity: {
+      type: [String],
+      default: []
+    },
     location: {
       type: String,
       required: true,
     },
     title: {
-      type: String,
-      required: true,
-    },
-    spaceType: {
       type: String,
       required: true,
     },
@@ -42,18 +47,7 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
-    timeRanges: [
-      {
-        start: {
-          type: String,
-          required: true,
-        },
-        end: {
-          type: String,
-          required: true,
-        }
-      }
-    ],
+    timeRanges: [{ type: String }],
     name: {
       type: String,
       required: true,
@@ -61,6 +55,7 @@ const bookingSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
+      match: [/.+\@.+\..+/, 'Please enter a valid email address'],
     },
     pricePerHour: {
       type: Number,
