@@ -7,8 +7,6 @@ const ALLOWED_DURATIONS = ['4H', '6H', '8H', '10H', '16H'];
 
 export const bookingValidationRules = [
   check('userId', 'User ID is required').notEmpty(),
-  check('location', 'Location is required').notEmpty(),
-  check('title', 'Title is required').notEmpty(),
   check('spaceType').optional().isString(),
   check('spaceTypeId').optional().isMongoId(),
   check('guests', 'Guests must be a number greater than 0').isInt({ min: 1 }),
@@ -33,10 +31,6 @@ export const bookingValidationRules = [
 
   check('timeRanges')
     .isArray({ min: 1 }).withMessage('timeRanges must be an array of at least one slot (e.g., Morning, 4H)'),
-
-  check('name', 'Name is required').notEmpty(),
-  check('email', 'Valid email is required').isEmail(),
-  check('pricePerHour', 'Price per hour must be a number').isFloat({ min: 0 }),
   check('serviceFeeAndTax', 'Service fee and tax must be a number').isFloat({ min: 0 }),
   check('totalAmount', 'Total amount must be a number').isFloat({ min: 0 }),
 

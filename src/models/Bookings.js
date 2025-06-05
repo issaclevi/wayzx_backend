@@ -26,14 +26,6 @@ const bookingSchema = new mongoose.Schema(
       type: [String],
       default: []
     },
-    location: {
-      type: String,
-      required: true,
-    },
-    title: {
-      type: String,
-      required: true,
-    },
     guests: {
       type: Number,
       required: true,
@@ -47,20 +39,11 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    start_time: {
+      type: String,
+      required: true,
+    },
     timeRanges: [{ type: String }],
-    name: {
-      type: String,
-      required: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      match: [/.+\@.+\..+/, 'Please enter a valid email address'],
-    },
-    pricePerHour: {
-      type: Number,
-      required: true,
-    },
     serviceFeeAndTax: {
       type: Number,
       required: true,

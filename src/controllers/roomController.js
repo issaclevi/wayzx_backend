@@ -25,7 +25,8 @@ exports.createRoom = async (req, res) => {
 // Get all rooms
 exports.getAllRooms = async (req, res) => {
   try {
-    const rooms = await Room.find().populate('spaceTypeId', 'name');
+    const rooms = await Room.find().sort({ createdAt: -1 })
+    .populate('spaceTypeId', 'name');
     return sendSuccess(res, 'Rooms fetched successfully', rooms);
   } catch (error) {
     console.error(error);
@@ -97,41 +98,6 @@ exports.deleteRoom = async (req, res) => {
 };
 
 // Get room availability for a date
-const timeToMinutes = (timeStr) => {
-  if (!timeStr || typeof timeStr !== 'string') return -1;
-
-  const parts = timeStr.trim().split(' ');
-  if (parts.length !== 2) return -1;
-
-  const [timePart, period] = parts;
-  const [hoursStr, minutesStr] = timePart.split(':');
-  const hours = parseInt(hoursStr, 10);
-  const minutes = parseInt(minutesStr, 10);
-
-  if (isNaN(hours) || isNaN(minutes)) return -1;
-
-  let totalMinutes = hours * 60 + minutes;
-  if (period.toUpperCase() === 'PM' && hours !== 12) totalMinutes += 12 * 60;
-  if (period.toUpperCase() === 'AM' && hours === 12) totalMinutes -= 12 * 60;
-  return totalMinutes;
-};
-
-const isTimeOverlapping = (slotStart, slotEnd, bookingStart, bookingEnd) => {
-  return (
-    (slotStart >= bookingStart && slotStart < bookingEnd) ||
-    (slotEnd > bookingStart && slotEnd <= bookingEnd) ||
-    (slotStart <= bookingStart && slotEnd >= bookingEnd)
-  );
-};
-
-function formatTimeDisplay(totalMinutes) {
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-}
-
 exports.getRoomAvailability = async (req, res) => {
   try {
     const { id } = req.params;
@@ -140,8 +106,8 @@ exports.getRoomAvailability = async (req, res) => {
     const room = await Room.findById(id);
     if (!room) return sendNotFound(res, 'Room not found');
 
-    const start = startDate ? moment(startDate) : moment();
-    const end = endDate ? moment(endDate) : moment(start);
+    const start = startDate ? moment(startDate, 'YYYY-MM-DD') : moment();
+    const end = endDate ? moment(endDate, 'YYYY-MM-DD') : moment(start);
 
     if (!start.isValid() || !end.isValid()) {
       return sendErrorMessage(res, 'Invalid date format. Use YYYY-MM-DD');
@@ -173,20 +139,24 @@ exports.getRoomAvailability = async (req, res) => {
 
           for (const booking of bookings) {
             for (const range of booking.timeRanges || []) {
-              if (!range.start || !range.end) {
-                console.warn('Invalid time range:', range);
+              let bookingStartMin, bookingEndMin;
+
+              if (typeof range === 'string' && range.endsWith('H')) {
+                const hours = parseInt(range);
+                bookingStartMin = 8 * 60; //
+                bookingEndMin = bookingStartMin + hours * 60;
+              } else if (typeof range === 'object' && range.start && range.end) {
+                bookingStartMin = timeToMinutes(range.start);
+                bookingEndMin = timeToMinutes(range.end);
+              } else {
                 continue;
               }
 
-              const bookingStartMin = timeToMinutes(range.start);
-              const bookingEndMin = timeToMinutes(range.end);
-
-              if (bookingStartMin === -1 || bookingEndMin === -1) {
-                console.warn('Invalid time string in range:', range);
-                continue;
-              }
-
-              if (isTimeOverlapping(slotStartMin, slotEndMin, bookingStartMin, bookingEndMin)) {
+              if (
+                bookingStartMin !== -1 &&
+                bookingEndMin !== -1 &&
+                isTimeOverlapping(slotStartMin, slotEndMin, bookingStartMin, bookingEndMin)
+              ) {
                 isBooked = true;
                 break;
               }
@@ -210,7 +180,10 @@ exports.getRoomAvailability = async (req, res) => {
       room: room.title || room.name,
       spaceType: room.spaceType,
       location: room.location,
-      range: { startDate: start.format('YYYY-MM-DD'), endDate: end.format('YYYY-MM-DD') },
+      range: {
+        startDate: start.format('YYYY-MM-DD'),
+        endDate: end.format('YYYY-MM-DD')
+      },
       availability: days
     });
   } catch (error) {
@@ -218,11 +191,3 @@ exports.getRoomAvailability = async (req, res) => {
     return sendError(res, error);
   }
 };
-
-function formatTimeDisplay(totalMinutes) {
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-}

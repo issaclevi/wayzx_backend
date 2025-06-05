@@ -17,6 +17,15 @@ const SpaceTypeSchema = new mongoose.Schema(
       default: true,
     },
     allowedSlots: [{ type: String }],
+    slotBehavior: {
+      type: String,
+      enum: ['consecutive', 'full-block'],
+      default: 'consecutive',
+    },
+    slotDuration: {
+      type: Number,
+      default: 1,
+    },
     lastBookedAt: { type: Date },
     bookingsCount: { type: Number, default: 0 }
   },

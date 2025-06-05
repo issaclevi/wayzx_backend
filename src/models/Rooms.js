@@ -7,6 +7,7 @@ const roomSchema = new mongoose.Schema({
     location: { type: String, required: true },
     pricePerHour: { type: Number, required: true },
     capacity: { type: Number, required: true },
+    roomSize: { type: Number, required: true },
     spaceTypeId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'SpaceType',
@@ -26,6 +27,32 @@ const roomSchema = new mongoose.Schema({
             isFree: Boolean
         },
     ],
+    openingHours: {
+        monday: {
+            open: String,
+            close: String
+        },
+        tuesday: {
+            open: String,
+            close: String
+        },
+        wednesday: {
+            open: String,
+            close: String
+        },
+        thursday: {
+            open: String,
+            close: String
+        },
+        friday: {
+            open: String,
+            close: String
+        },
+        saturday: {
+            open: String,
+            close: String
+        }
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Room', roomSchema);
