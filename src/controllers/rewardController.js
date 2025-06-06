@@ -42,6 +42,7 @@ exports.getAllUsersRewards = async (req, res) => {
   try {
 
     // if (!req.user.isAdmin) return sendErrorMessage(res, 'Unauthorized', req, 403);
+    console.log('Fetching all users rewards with query:', req.query);
 
     const result = await RewardService.getAllUsersRewards(req.query);
 
