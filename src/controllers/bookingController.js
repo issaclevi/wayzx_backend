@@ -37,7 +37,8 @@ exports.createBooking = async (req, res) => {
             totalAmount,
             status,
             useRewardPoints = false,
-            pointsToUse = 0
+            pointsToUse = 0,
+            couponCode = null
         } = req.body;
 
         const timezone = req.headers['x-timezone'] || 'Asia/Kolkata';
@@ -167,6 +168,36 @@ exports.createBooking = async (req, res) => {
             }
         }
 
+        // Coupon
+
+        let couponDiscount = 0;
+        let appliedCoupon = null;
+        if (couponCode) {
+            const coupon = await Coupon.findOne({ code: couponCode.trim().toUpperCase(), isActive: true });
+            if (!coupon) return sendErrorMessage(res, 'Invalid or expired coupon code', req);
+            if (coupon.expiryDate < new Date()) return sendErrorMessage(res, 'Coupon expired', req);
+            if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) return sendErrorMessage(res, 'Coupon usage limit reached', req);
+            if (totalAmount < coupon.minPurchaseAmount) return sendErrorMessage(res, `Min purchase: ₹${coupon.minPurchaseAmount}`, req);
+            const isUserApplicable = !coupon.applicableUsers.length || coupon.applicableUsers.includes(userId);
+            const isRoomApplicable = !coupon.applicableRooms.length || coupon.applicableRooms.includes(roomId);
+            const isSpaceTypeApplicable = !coupon.applicableSpaceTypes.length || coupon.applicableSpaceTypes.includes(spaceTypeId);
+            if (!isUserApplicable || !isRoomApplicable || !isSpaceTypeApplicable) {
+                return sendErrorMessage(res, 'Coupon not applicable to this booking', req);
+            }
+
+            if (coupon.discountType === 'Amount') {
+                couponDiscount = coupon.discountValue;
+            } else if (coupon.discountType === 'Percentage') {
+                couponDiscount = (coupon.discountValue / 100) * totalAmount;
+                if (coupon.maxDiscount) {
+                    couponDiscount = Math.min(couponDiscount, coupon.maxDiscount);
+                }
+            }
+
+            finalAmount -= couponDiscount;
+            appliedCoupon = coupon;
+        }
+
         // Create booking
         const newBooking = await Booking.create({
             bookingId: generateBookingId(),
@@ -184,8 +215,14 @@ exports.createBooking = async (req, res) => {
             amountPaid: finalAmount,
             rewardPointsUsed: useRewardPoints ? actualPointsToUse : 0,
             rewardDiscount: discountFromPoints,
+            couponCode: appliedCoupon?.code || null,
+            couponDiscount,
             status: status || 'Pending',
         });
+
+        if (appliedCoupon) {
+            await Coupon.findByIdAndUpdate(appliedCoupon._id, { $inc: { usedCount: 1 } });
+        }
 
         // Mark slots as booked
         for (let day = moment(start); day.isSameOrBefore(end); day.add(1, 'day')) {
@@ -244,6 +281,8 @@ exports.createBooking = async (req, res) => {
             end_date: moment(newBooking.end_date).tz(timezone).format('YYYY-MM-DD'),
             rewardPointsEarned: pointsEarned,
             rewardPointsUsed: useRewardPoints ? actualPointsToUse : 0,
+            couponCode: appliedCoupon?.code || null,
+            couponDiscount,
             minAmountForPoints: rewardSettings.minBookingAmountForPoints,
             pointToCurrencyRate: rewardSettings.pointToCurrencyRate,
             pointsPerBooking: rewardSettings.pointsPerBooking
