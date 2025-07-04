@@ -130,16 +130,16 @@ exports.createBooking = async (req, res) => {
                 });
             }
 
-            for (const slot of finalSlots) {
-                const count = availability.bookedSlots.get(slot) || 0;
-                if (count > 0) {
-                    return sendErrorMessage(
-                        res,
-                        `Slot '${slot}' is already booked on ${day.format('YYYY-MM-DD')}`,
-                        req
-                    );
-                }
-            }
+            // for (const slot of finalSlots) {
+            //     const count = availability.bookedSlots.get(slot) || 0;
+            //     if (count > 0) {
+            //         return sendErrorMessage(
+            //             res,
+            //             `Slot '${slot}' is already booked on ${day.format('YYYY-MM-DD')}`,
+            //             req
+            //         );
+            //     }
+            // }
         }
 
         // Reward Points Calculation
