@@ -1,6 +1,7 @@
 const Booking = require('../models/Bookings');
 const moment = require('moment-timezone');
 const SpaceType = require('../models/SpaceType');
+const Coupon = require('../models/Coupon');
 const Room = require('../models/Rooms');
 const RoomAvailability = require('../models/RoomAvailability');
 const RewardSetting = require('../models/Reward');
