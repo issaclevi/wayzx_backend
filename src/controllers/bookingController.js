@@ -22,6 +22,281 @@ const generateBookingId = () => {
 // await Booking.deleteMany({})
 // await RoomAvailability.deleteMany({})
 
+// exports.createBooking = async (req, res) => {
+//     try {
+//         const {
+//             roomId,
+//             start_date,
+//             start_time,
+//             spaceTypeId,
+//             timeRanges = [],
+//             extraAmenity = [],
+//             userId,
+//             guests,
+//             end_date,
+//             serviceFeeAndTax,
+//             totalAmount,
+//             status,
+//             useRewardPoints = false,
+//             pointsToUse = 0,
+//             couponCode = null
+//         } = req.body;
+
+//         const timezone = req.headers['x-timezone'] || 'Asia/Kolkata';
+
+//         const rewardSettings = await RewardService.getSettings();
+//         if (rewardSettings.pointsPerBooking <= 0) {
+//             console.warn('Invalid pointsPerBooking value, resetting to default 5');
+//             rewardSettings.pointsPerBooking = 5;
+//             await rewardSettings.save();
+//         }
+
+//         if (!roomId || !start_date || !spaceTypeId) {
+//             return sendErrorMessage(res, 'Missing required fields (roomId, start_date, spaceTypeId)', req);
+//         }
+
+//         const room = await Room.findById(roomId);
+//         if (!room) return sendErrorMessage(res, 'Room not found', req);
+
+//         const spaceTypeDoc = await SpaceType.findById(spaceTypeId).lean();
+//         if (!spaceTypeDoc || !spaceTypeDoc.allowedSlots?.length) {
+//             return sendErrorMessage(res, 'Invalid spaceTypeId or missing allowedSlots', req);
+//         }
+
+//         // Determine final time slots
+//         let finalSlots = [];
+//         const slotPresets = {
+//             '3H': 3,
+//             '6H': 6,
+//             'FullTime': Number.MAX_SAFE_INTEGER,
+//             'Morning': ['09:00AM', '10:00AM', '11:00AM', '12:00PM'],
+//             'Evening': ['01:00PM', '02:00PM', '03:00PM', '04:00PM', '05:00PM', '06:00PM']
+//         };
+
+//         const isMeetingRoom = spaceTypeDoc.name.toLowerCase().includes('meeting');
+
+//         if (isMeetingRoom) {
+//             const type = (timeRanges[0] || '').trim();
+//             if (!slotPresets[type]) {
+//                 return sendErrorMessage(res, `Invalid timeRanges value for meeting room: '${type}'. Use 'Morning' or 'Evening'`, req);
+//             }
+
+//             finalSlots = slotPresets[type];
+//         } else {
+//             if (!start_time) {
+//                 return sendErrorMessage(res, 'start_time is required for non-meeting space types', req);
+//             }
+
+//             const slotKey = timeRanges[0] || '3H';
+//             const duration = slotPresets[slotKey] || 3;
+
+//             const startIndex = spaceTypeDoc.allowedSlots.indexOf(start_time);
+//             if (startIndex === -1) {
+//                 return sendErrorMessage(res, 'Invalid start_time', req);
+//             }
+
+//             finalSlots = spaceTypeDoc.allowedSlots.slice(startIndex, startIndex + duration);
+//             if (finalSlots.length < duration) {
+//                 return sendErrorMessage(res, `Only ${finalSlots.length} slots available from ${start_time}, but ${duration} requested`, req);
+//             }
+//         }
+
+//         // Validate all finalSlots
+//         for (const slot of finalSlots) {
+//             if (!spaceTypeDoc.allowedSlots.includes(slot)) {
+//                 return sendErrorMessage(res, `Slot '${slot}' is not allowed`, req);
+//             }
+//         }
+
+//         // Normalize dates to timezone
+//         const start = moment.tz(start_date, 'YYYY-MM-DD', timezone).startOf('day');
+//         const end = moment.tz(end_date || start_date, 'YYYY-MM-DD', timezone).startOf('day');
+
+//         if (!start.isValid() || !end.isValid() || end.isBefore(start)) {
+//             return sendErrorMessage(res, 'Invalid start/end date', req);
+//         }
+
+//         // Check slot availability
+//         for (let day = moment(start); day.isSameOrBefore(end); day.add(1, 'day')) {
+//             const dateOnly = day.clone().startOf('day').toDate();
+
+//             let availability = await RoomAvailability.findOne({ roomId, date: dateOnly });
+//             if (!availability) {
+//                 availability = await RoomAvailability.create({
+//                     roomId,
+//                     date: dateOnly,
+//                     availableSize: 1,
+//                     bookedSlots: {}
+//                 });
+//             }
+
+//             // for (const slot of finalSlots) {
+//             //     const count = availability.bookedSlots.get(slot) || 0;
+//             //     if (count > 0) {
+//             //         return sendErrorMessage(
+//             //             res,
+//             //             `Slot '${slot}' is already booked on ${day.format('YYYY-MM-DD')}`,
+//             //             req
+//             //         );
+//             //     }
+//             // }
+//         }
+
+//         // Reward Points Calculation
+//         let discountFromPoints = 0;
+//         let finalAmount = totalAmount;
+//         let actualPointsToUse = pointsToUse;
+//         let pointsEarned = 0;
+
+//         if (useRewardPoints && userId) {
+//             try {
+//                 const rewardCalc = await RewardService.calculateDiscountFromPoints(userId, totalAmount);
+//                 if (pointsToUse > 0) {
+//                     if (pointsToUse > rewardCalc.pointsToUse) {
+//                         return sendErrorMessage(res, `Cannot use more than ${rewardCalc.pointsToUse} points for this booking`, req);
+//                     }
+//                     discountFromPoints = pointsToUse / rewardSettings.pointToCurrencyRate;
+//                     actualPointsToUse = pointsToUse;
+//                 } else {
+//                     discountFromPoints = rewardCalc.discountAmount;
+//                     actualPointsToUse = rewardCalc.pointsToUse;
+//                 }
+
+//                 finalAmount = totalAmount - discountFromPoints;
+//             } catch (error) {
+//                 console.error('Reward points calculation failed:', error);
+//                 return sendErrorMessage(res, error.message, req);
+//             }
+//         }
+
+//         // Coupon
+
+//         let couponDiscount = 0;
+//         let appliedCoupon = null;
+//         if (couponCode) {
+//             const coupon = await Coupon.findOne({ code: couponCode.trim().toUpperCase(), isActive: true });
+//             if (!coupon) return sendErrorMessage(res, 'Invalid or expired coupon code', req);
+//             if (coupon.expiryDate < new Date()) return sendErrorMessage(res, 'Coupon expired', req);
+//             if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) return sendErrorMessage(res, 'Coupon usage limit reached', req);
+//             if (totalAmount < coupon.minPurchaseAmount) return sendErrorMessage(res, `Min purchase: ₹${coupon.minPurchaseAmount}`, req);
+//             const isUserApplicable = !coupon.applicableUsers.length || coupon.applicableUsers.includes(userId);
+//             const isRoomApplicable = !coupon.applicableRooms.length || coupon.applicableRooms.includes(roomId);
+//             const isSpaceTypeApplicable = !coupon.applicableSpaceTypes.length || coupon.applicableSpaceTypes.includes(spaceTypeId);
+//             if (!isUserApplicable || !isRoomApplicable || !isSpaceTypeApplicable) {
+//                 return sendErrorMessage(res, 'Coupon not applicable to this booking', req);
+//             }
+
+//             if (coupon.discountType === 'Amount') {
+//                 couponDiscount = coupon.discountValue;
+//             } else if (coupon.discountType === 'Percentage') {
+//                 couponDiscount = (coupon.discountValue / 100) * totalAmount;
+//                 if (coupon.maxDiscount) {
+//                     couponDiscount = Math.min(couponDiscount, coupon.maxDiscount);
+//                 }
+//             }
+
+//             finalAmount -= couponDiscount;
+//             appliedCoupon = coupon;
+//         }
+
+//         // Create booking
+//         const newBooking = await Booking.create({
+//             bookingId: generateBookingId(),
+//             roomId,
+//             userId,
+//             spaceType: spaceTypeId,
+//             extraAmenity,
+//             guests,
+//             start_time: isMeetingRoom ? finalSlots[0] : start_time,
+//             start_date: start.toDate(),
+//             end_date: end.toDate(),
+//             timeRanges: finalSlots,
+//             serviceFeeAndTax,
+//             totalAmount,
+//             amountPaid: finalAmount,
+//             rewardPointsUsed: useRewardPoints ? actualPointsToUse : 0,
+//             rewardDiscount: discountFromPoints,
+//             couponCode: appliedCoupon?.code || null,
+//             couponDiscount,
+//             status: status || 'Pending',
+//         });
+
+//         if (appliedCoupon) {
+//             await Coupon.findByIdAndUpdate(appliedCoupon._id, { $inc: { usedCount: 1 } });
+//         }
+
+//         // Mark slots as booked
+//         for (let day = moment(start); day.isSameOrBefore(end); day.add(1, 'day')) {
+//             const dateOnly = day.clone().startOf('day').toDate();
+
+//             const updateObj = { $inc: {} };
+//             finalSlots.forEach(slot => {
+//                 updateObj.$inc[`bookedSlots.${slot}`] = 1;
+//             });
+
+//             await RoomAvailability.updateOne({ roomId, date: dateOnly }, updateObj);
+//         }
+
+//         // Update space usage stats
+//         await SpaceType.findByIdAndUpdate(spaceTypeId, {
+//             $set: { lastBookedAt: new Date() },
+//             $inc: { bookingsCount: 1 }
+//         });
+
+//         // Process Reward Points
+//         if (userId) {
+//             try {
+//                 // Deduct points if used
+//                 if (useRewardPoints && actualPointsToUse > 0) {
+//                     await RewardService.deductPoints(userId, actualPointsToUse, {
+//                         bookingId: newBooking._id,
+//                         note: `Points redeemed for booking ${newBooking.bookingId}`,
+//                         createdBy: userId,
+//                         ipAddress: req.ip
+//                     });
+//                 }
+
+//                 // Add earned points if eligible
+
+//                 const isEligibleForPoints = totalAmount >= rewardSettings.minBookingAmountForPoints;
+
+//                 if (isEligibleForPoints) {
+//                     pointsEarned = rewardSettings.pointsPerBooking;
+//                     await RewardService.addPoints(userId, pointsEarned, {
+//                         bookingId: newBooking._id,
+//                         note: `Points earned from booking ${newBooking.bookingId}`,
+//                         createdBy: userId,
+//                         ipAddress: req.ip
+//                     });
+//                 }
+//             } catch (error) {
+//                 console.error('Reward points processing failed:', error);
+//                 // Continue with booking even if reward processing fails
+//             }
+//         }
+
+//         // Prepare response
+//         const formattedBooking = {
+//             ...newBooking.toObject(),
+//             start_date: moment(newBooking.start_date).tz(timezone).format('YYYY-MM-DD'),
+//             end_date: moment(newBooking.end_date).tz(timezone).format('YYYY-MM-DD'),
+//             rewardPointsEarned: pointsEarned,
+//             rewardPointsUsed: useRewardPoints ? actualPointsToUse : 0,
+//             couponCode: appliedCoupon?.code || null,
+//             couponDiscount,
+//             minAmountForPoints: rewardSettings.minBookingAmountForPoints,
+//             pointToCurrencyRate: rewardSettings.pointToCurrencyRate,
+//             pointsPerBooking: rewardSettings.pointsPerBooking
+//         };
+//         return sendSuccess(res, 'Booking created successfully', formattedBooking);
+
+//     } catch (error) {
+//         console.error('Booking creation failed:', error);
+//         return sendError(res, error, req);
+//     }
+// };
+
+
 exports.createBooking = async (req, res) => {
     try {
         const {
@@ -66,6 +341,8 @@ exports.createBooking = async (req, res) => {
         // Determine final time slots
         let finalSlots = [];
         const slotPresets = {
+            '1H': 1,
+            '2H': 2,
             '3H': 3,
             '6H': 6,
             'FullTime': Number.MAX_SAFE_INTEGER,
@@ -74,6 +351,7 @@ exports.createBooking = async (req, res) => {
         };
 
         const isMeetingRoom = spaceTypeDoc.name.toLowerCase().includes('meeting');
+        let durationDisplay = '';
 
         if (isMeetingRoom) {
             const type = (timeRanges[0] || '').trim();
@@ -82,19 +360,28 @@ exports.createBooking = async (req, res) => {
             }
 
             finalSlots = slotPresets[type];
+            durationDisplay = type === 'Morning' ? '09:00AM to 12:00PM' : '01:00PM to 06:00PM';
         } else {
+            // Co-working space logic
             if (!start_time) {
-                return sendErrorMessage(res, 'start_time is required for non-meeting space types', req);
+                return sendErrorMessage(res, 'start_time is required for co-working space', req);
             }
 
-            const slotKey = timeRanges[0] || '3H';
-            const duration = slotPresets[slotKey] || 3;
+            const slotKey = timeRanges[0] || '1H';
+            const duration = slotPresets[slotKey] || 1;
 
             const startIndex = spaceTypeDoc.allowedSlots.indexOf(start_time);
             if (startIndex === -1) {
                 return sendErrorMessage(res, 'Invalid start_time', req);
             }
 
+            // Calculate end time
+            const startMoment = moment(`01/01/2000 ${start_time}`, 'MM/DD/YYYY hh:mmA');
+            const endMoment = startMoment.clone().add(duration, 'hours');
+            const end_time = endMoment.format('hh:mmA');
+            durationDisplay = `${start_time} to ${end_time}`;
+
+            // Still store individual slots for availability checking
             finalSlots = spaceTypeDoc.allowedSlots.slice(startIndex, startIndex + duration);
             if (finalSlots.length < duration) {
                 return sendErrorMessage(res, `Only ${finalSlots.length} slots available from ${start_time}, but ${duration} requested`, req);
@@ -130,16 +417,16 @@ exports.createBooking = async (req, res) => {
                 });
             }
 
-            // for (const slot of finalSlots) {
-            //     const count = availability.bookedSlots.get(slot) || 0;
-            //     if (count > 0) {
-            //         return sendErrorMessage(
-            //             res,
-            //             `Slot '${slot}' is already booked on ${day.format('YYYY-MM-DD')}`,
-            //             req
-            //         );
-            //     }
-            // }
+            for (const slot of finalSlots) {
+                const count = availability.bookedSlots.get(slot) || 0;
+                if (count > 0) {
+                    return sendErrorMessage(
+                        res,
+                        `Slot '${slot}' is already booked on ${day.format('YYYY-MM-DD')}`,
+                        req
+                    );
+                }
+            }
         }
 
         // Reward Points Calculation
@@ -169,8 +456,7 @@ exports.createBooking = async (req, res) => {
             }
         }
 
-        // Coupon
-
+        // Coupon Handling
         let couponDiscount = 0;
         let appliedCoupon = null;
         if (couponCode) {
@@ -210,7 +496,7 @@ exports.createBooking = async (req, res) => {
             start_time: isMeetingRoom ? finalSlots[0] : start_time,
             start_date: start.toDate(),
             end_date: end.toDate(),
-            timeRanges: finalSlots,
+            timeRanges: isMeetingRoom ? finalSlots : [durationDisplay], // Store formatted duration for co-working
             serviceFeeAndTax,
             totalAmount,
             amountPaid: finalAmount,
@@ -219,6 +505,7 @@ exports.createBooking = async (req, res) => {
             couponCode: appliedCoupon?.code || null,
             couponDiscount,
             status: status || 'Pending',
+            durationDisplay // Add this field for easy display
         });
 
         if (appliedCoupon) {
@@ -257,9 +544,7 @@ exports.createBooking = async (req, res) => {
                 }
 
                 // Add earned points if eligible
-
                 const isEligibleForPoints = totalAmount >= rewardSettings.minBookingAmountForPoints;
-
                 if (isEligibleForPoints) {
                     pointsEarned = rewardSettings.pointsPerBooking;
                     await RewardService.addPoints(userId, pointsEarned, {
@@ -271,7 +556,6 @@ exports.createBooking = async (req, res) => {
                 }
             } catch (error) {
                 console.error('Reward points processing failed:', error);
-                // Continue with booking even if reward processing fails
             }
         }
 
@@ -280,6 +564,7 @@ exports.createBooking = async (req, res) => {
             ...newBooking.toObject(),
             start_date: moment(newBooking.start_date).tz(timezone).format('YYYY-MM-DD'),
             end_date: moment(newBooking.end_date).tz(timezone).format('YYYY-MM-DD'),
+            duration: durationDisplay,
             rewardPointsEarned: pointsEarned,
             rewardPointsUsed: useRewardPoints ? actualPointsToUse : 0,
             couponCode: appliedCoupon?.code || null,
