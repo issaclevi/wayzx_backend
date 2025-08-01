@@ -23,7 +23,7 @@ const userSchema = new Schema(
     role: {
       type: String,
       required: [true, 'Role is required'],
-      enum: ['admin', 'user', 'moderator'],
+      enum: ['admin', 'user', 'moderator','hotel'],
     },
     phoneNumber: {
       type: String,

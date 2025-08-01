@@ -13,6 +13,7 @@ const {
 // Create a new room
 exports.createRoom = async (req, res) => {
   try {
+    
     const room = new Room(req.body);
     await room.save();
     return sendSuccess(res, 'Room created successfully', room);
@@ -58,7 +59,7 @@ exports.getRoomsBySpaceTypeId = async (req, res) => {
 // Get a single room by ID
 exports.getRoomById = async (req, res) => {
   try {
-    const room = await Room.findById(req.params.id);
+    const room = await Room.findById(req.params.id).populate('spaceTypeId', 'name');
     if (!room) {
       return sendNotFound(res, 'Room not found');
     }
